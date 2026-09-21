@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Buddy - Music Assistant</title>
+    <meta name="description" content="Voice-activated music assistant awakened with 'Hey Buddy', featuring high-fidelity audio playback, hands-free Hindi and English voice controls, and smart playback commands." />
+    <meta property="og:title" content="Buddy - Music Assistant" />
+    <meta property="og:description" content="Voice-activated music assistant awakened with 'Hey Buddy', featuring high-fidelity audio playback, hands-free Hindi and English voice controls, and smart playback commands." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+  </head>
+  <body class="bg-black text-white antialiased selection:bg-[#fa243c] selection:text-white">
+    <div id="root"></div>
+    <script>
+      // Register standard PWA Service Worker for installability
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((reg) => console.log('PWA Service Worker active:', reg.scope))
+            .catch((err) => console.warn('Service Worker registration note:', err));
+        });
+      }
+    </script>
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

@@ -1,0 +1,87 @@
+name: Build Buddy Music Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build & Package Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate Android Signing Keystore
+        run: |
+          keytool -genkeypair -v \
+            -keystore android.keystore \
+            -alias android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass password123 \
+            -keypass password123 \
+            -dname "CN=Buddy Music, OU=App, O=Buddy, L=Delhi, S=Delhi, C=IN"
+
+      - name: Install Bubblewrap CLI
+        run: npm install -g @bubblewrap/cli
+
+      - name: Build Android APK
+        env:
+          BUBBLEWRAP_KEYSTORE_PASSWORD: password123
+          BUBBLEWRAP_KEY_PASSWORD: password123
+        run: |
+          echo "Building APK using Bubblewrap..."
+          bubblewrap build --skipPwaValidation
+
+      - name: Rename and Prepare APK
+        run: |
+          mkdir -p release-apk
+          find . -maxdepth 2 -name "*.apk" -exec cp {} release-apk/Buddy-Music-release.apk \;
+          ls -la release-apk/
+
+      - name: Upload APK Artifact (Downloadable from GitHub Actions)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Buddy-Music-Android-APK
+          path: release-apk/*.apk
+          retention-days: 30
+
+      - name: Create GitHub Release with APK
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Buddy Music v1.0.${{ github.run_number }} APK
+          body: |
+            ### 🎵 Buddy - Voice Music Assistant APK
+            Here is your freshly compiled Android APK!
+
+            **How to install:**
+            1. Download `Buddy-Music-release.apk` below.
+            2. Open the file on your Android phone and tap **Install**.
+            3. Enjoy hands-free music control with "Hey Buddy"!
+          files: release-apk/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true

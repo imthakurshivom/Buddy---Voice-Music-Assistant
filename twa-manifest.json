@@ -1,0 +1,26 @@
+{
+  "packageId": "com.buddymusic.app",
+  "host": "ais-pre-7m6wppvuhbt4fh6454dfls-58305786231.asia-southeast1.run.app",
+  "name": "Buddy - Voice Music Assistant",
+  "launcherName": "Buddy Music",
+  "display": "standalone",
+  "themeColor": "#000000",
+  "navigationColor": "#000000",
+  "backgroundColor": "#000000",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://ais-pre-7m6wppvuhbt4fh6454dfls-58305786231.asia-southeast1.run.app/icon-512.png",
+  "maskableIconUrl": "https://ais-pre-7m6wppvuhbt4fh6454dfls-58305786231.asia-southeast1.run.app/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "android"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://ais-pre-7m6wppvuhbt4fh6454dfls-58305786231.asia-southeast1.run.app/manifest.json",
+  "fallbackType": "customtabs",
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false
+}

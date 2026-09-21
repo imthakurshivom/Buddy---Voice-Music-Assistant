@@ -1,0 +1,6 @@
+{
+  "name": "Buddy - Music Assistant",
+  "description": "Voice-activated music assistant awakened with 'Hey Buddy', featuring high-fidelity audio playback, hands-free Hindi and English voice controls, and smart playback commands.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
