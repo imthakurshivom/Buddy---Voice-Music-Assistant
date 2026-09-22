@@ -2,11 +2,11 @@ name: Build Buddy Music Android APK
 
 on:
   push:
-    branches: [ main, master ]
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   build-apk:
@@ -23,13 +23,31 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Set up Android SDK & Accept Licenses
+        run: |
+          echo "ANDROID_HOME: $ANDROID_HOME"
+          echo "JAVA_HOME: $JAVA_HOME"
+          mkdir -p "$ANDROID_HOME/licenses" || true
+          echo -e "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78ba6ed6ee32419f60\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$ANDROID_HOME/licenses/android-sdk-license"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses 2>/dev/null || true
+
+      - name: Install Bubblewrap CLI & Configure Non-Interactive Paths
+        run: |
+          npm install -g @bubblewrap/cli
+          mkdir -p ~/.bubblewrap
+          cat <<EOF > ~/.bubblewrap/config.json
+          {
+            "jdkPath": "$JAVA_HOME",
+            "androidSdkPath": "$ANDROID_HOME"
+          }
+          EOF
+          echo "Bubblewrap config.json created:"
+          cat ~/.bubblewrap/config.json
 
       - name: Generate Android Signing Keystore
         run: |
@@ -43,32 +61,50 @@ jobs:
             -keypass password123 \
             -dname "CN=Buddy Music, OU=App, O=Buddy, L=Delhi, S=Delhi, C=IN"
 
-      - name: Install Bubblewrap CLI
-        run: npm install -g @bubblewrap/cli
+      - name: Serve Local Assets for Build & Update TWA Manifest
+        run: |
+          # Start background local server to serve public icons
+          python3 -m http.server 8089 --directory public &
+          SERVER_PID=$!
+          sleep 2
 
-      - name: Build Android APK
+          # Update twa-manifest to use local icon during build
+          node -e '
+            const fs = require("fs");
+            const manifest = JSON.parse(fs.readFileSync("twa-manifest.json", "utf8"));
+            manifest.iconUrl = "http://127.0.0.1:8089/icon-512.png";
+            manifest.maskableIconUrl = "http://127.0.0.1:8089/icon-512.png";
+            manifest.webManifestUrl = "http://127.0.0.1:8089/manifest.json";
+            fs.writeFileSync("twa-manifest.json", JSON.stringify(manifest, null, 2));
+            console.log("Updated twa-manifest.json with build-time assets URL");
+          '
+
+      - name: Generate Project & Build APK
         env:
           BUBBLEWRAP_KEYSTORE_PASSWORD: password123
           BUBBLEWRAP_KEY_PASSWORD: password123
         run: |
-          echo "Building APK using Bubblewrap..."
+          echo "Updating Android project from twa-manifest..."
+          bubblewrap update --skipVersionUpgrade
+
+          echo "Compiling Android APK..."
           bubblewrap build --skipPwaValidation
 
       - name: Rename and Prepare APK
         run: |
           mkdir -p release-apk
           find . -maxdepth 2 -name "*.apk" -exec cp {} release-apk/Buddy-Music-release.apk \;
+          echo "Listing compiled APKs:"
           ls -la release-apk/
 
-      - name: Upload APK Artifact (Downloadable from GitHub Actions)
+      - name: Upload APK Artifact (Download from GitHub Actions Tab)
         uses: actions/upload-artifact@v4
         with:
           name: Buddy-Music-Android-APK
           path: release-apk/*.apk
           retention-days: 30
 
-      - name: Create GitHub Release with APK
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
