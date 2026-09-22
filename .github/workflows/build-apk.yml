@@ -22,32 +22,10 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+          cache: 'gradle'
 
       - name: Set up Android SDK & Accept Licenses
         uses: android-actions/setup-android@v3
-
-      - name: Set up Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Bubblewrap CLI & Configure Non-Interactive Paths
-        run: |
-          npm install -g @bubblewrap/cli
-          
-          # Explicitly configure Bubblewrap paths non-interactively
-          npx @bubblewrap/cli updateConfig --jdkPath="$JAVA_HOME" --androidSdkPath="$ANDROID_HOME" || true
-          
-          mkdir -p ~/.bubblewrap
-          cat <<EOF > ~/.bubblewrap/config.json
-          {
-            "jdkPath": "$JAVA_HOME",
-            "androidSdkPath": "$ANDROID_HOME"
-          }
-          EOF
-          echo "Bubblewrap config.json verified:"
-          cat ~/.bubblewrap/config.json
-          npx @bubblewrap/cli doctor || true
 
       - name: Generate Android Signing Keystore
         run: |
@@ -60,57 +38,42 @@ jobs:
             -storepass password123 \
             -keypass password123 \
             -dname "CN=Buddy Music, OU=App, O=Buddy, L=Delhi, S=Delhi, C=IN"
+          ls -la android.keystore
 
-      - name: Serve Local Assets for Build & Update TWA Manifest
+      - name: Build Android APK with Gradle
         run: |
-          # Start background local server to serve public icons
-          python3 -m http.server 8089 --directory public &
-          SERVER_PID=$!
-          sleep 2
+          chmod +x gradlew
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          ./gradlew assembleRelease --stacktrace --no-daemon
 
-          # Update twa-manifest to use local icon during build
-          node -e '
-            const fs = require("fs");
-            const manifest = JSON.parse(fs.readFileSync("twa-manifest.json", "utf8"));
-            manifest.iconUrl = "http://127.0.0.1:8089/icon-512.png";
-            manifest.maskableIconUrl = "http://127.0.0.1:8089/icon-512.png";
-            manifest.webManifestUrl = "http://127.0.0.1:8089/manifest.json";
-            fs.writeFileSync("twa-manifest.json", JSON.stringify(manifest, null, 2));
-            console.log("Updated twa-manifest.json with build-time assets URL");
-          '
-
-      - name: Generate Android Project from Manifest
-        run: |
-          echo "Updating Android project from twa-manifest..."
-          npx @bubblewrap/cli update --skipVersionUpgrade
-
-      - name: Compile Android APK via Gradle
-        env:
-          BUBBLEWRAP_KEYSTORE_PASSWORD: password123
-          BUBBLEWRAP_KEY_PASSWORD: password123
-        run: |
-          echo "Building APK..."
-          if npx @bubblewrap/cli build --skipPwaValidation; then
-            echo "Bubblewrap build succeeded!"
-          else
-            echo "Bubblewrap CLI build hit an issue, falling back to direct Gradle assembleRelease..."
-            chmod +x gradlew || true
-            ./gradlew assembleRelease || ./gradlew assembleDebug
-          fi
-
-      - name: Collect and Prepare APKs
+      - name: Collect and Sign APK (if needed)
         run: |
           mkdir -p release-apk
-          # Find any APK generated (Release or Debug or TWA)
-          find . -name "*.apk" -not -path "*/node_modules/*" -exec cp {} release-apk/Buddy-Music-release.apk \;
-          echo "Listing compiled APK in release-apk/:"
-          ls -lh release-apk/
-          if [ ! -f release-apk/Buddy-Music-release.apk ]; then
-            echo "Searching all built files for debugging:"
+          
+          # Check for generated APKs
+          RELEASE_APK=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
+          echo "Found APK: $RELEASE_APK"
+          
+          if [ -z "$RELEASE_APK" ]; then
+            echo "Searching all built files for any APK:"
             find . -name "*.apk"
+            exit 1
           fi
 
-      - name: Upload APK Artifact (Download from GitHub Actions Tab)
+          # If unsigned, sign with apksigner from Android SDK build-tools
+          if [[ "$RELEASE_APK" == *"unsigned"* ]]; then
+            echo "Signing APK with apksigner..."
+            BUILD_TOOLS_PATH=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
+            $BUILD_TOOLS_PATH/zipalign -v -p 4 "$RELEASE_APK" release-apk/Buddy-Music-aligned.apk
+            $BUILD_TOOLS_PATH/apksigner sign --ks android.keystore --ks-pass pass:password123 --key-pass pass:password123 --out release-apk/Buddy-Music-release.apk release-apk/Buddy-Music-aligned.apk
+          else
+            cp "$RELEASE_APK" release-apk/Buddy-Music-release.apk
+          fi
+
+          echo "APK successfully prepared:"
+          ls -lh release-apk/
+
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Buddy-Music-Android-APK
@@ -124,12 +87,12 @@ jobs:
           name: Buddy Music v1.0.${{ github.run_number }} APK
           body: |
             ### 🎵 Buddy - Voice Music Assistant APK
-            Here is your freshly compiled Android APK!
+            Compiled Android APK package for Buddy Music.
 
-            **How to install:**
+            **How to install on Android:**
             1. Download `Buddy-Music-release.apk` below.
-            2. Open the file on your Android phone and tap **Install**.
-            3. Enjoy hands-free music control with "Hey Buddy"!
+            2. Open the file on your device and tap **Install**.
+            3. Grant microphone permission for "Hey Buddy" voice assistant commands!
           files: release-apk/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
