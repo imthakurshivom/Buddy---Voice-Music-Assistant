@@ -2,38 +2,37 @@ name: Build Buddy Music Android APK
 
 on:
   push:
+    branches: [ main, master ]
   workflow_dispatch:
 
 permissions:
   contents: write
+  packages: write
   actions: read
 
 jobs:
-  build-apk:
-    name: Build & Package Android APK
+  build:
+    name: Build & Release Android APK
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Java 17 (Temurin)
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android Licenses & Ensure Build Tools
+      - name: Set up Android SDK Environment
         run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" || true
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          cat local.properties
+          mkdir -p "$ANDROID_HOME/licenses" || true
+          printf "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$ANDROID_HOME/licenses/android-sdk-license"
+          printf "\n84831b9409646a918e30573bab4c9c91346d8abd" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
 
       - name: Generate Android Signing Keystore
         run: |
@@ -46,62 +45,48 @@ jobs:
             -storepass password123 \
             -keypass password123 \
             -dname "CN=Buddy Music, OU=App, O=Buddy, L=Delhi, S=Delhi, C=IN"
-          ls -la android.keystore
 
       - name: Build Android APK with Gradle
         run: |
           chmod +x gradlew
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          ./gradlew assembleRelease --stacktrace --no-daemon
+          ./gradlew assembleRelease --no-daemon --stacktrace
 
-      - name: Collect and Sign APK (if needed)
+      - name: Locate and Prepare Release APK
         run: |
           mkdir -p release-apk
-          
-          # Check for generated APKs
-          RELEASE_APK=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
-          echo "Found APK: $RELEASE_APK"
-          
-          if [ -z "$RELEASE_APK" ]; then
-            echo "Searching all built files for any APK:"
+          APK_PATH=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
+          echo "Located APK at: $APK_PATH"
+          if [ -z "$APK_PATH" ]; then
+            echo "Error: No APK file generated!"
             find . -name "*.apk"
             exit 1
           fi
-
-          # If unsigned, sign with apksigner from Android SDK build-tools
-          if [[ "$RELEASE_APK" == *"unsigned"* ]]; then
-            echo "Signing APK with apksigner..."
-            BUILD_TOOLS_PATH=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
-            $BUILD_TOOLS_PATH/zipalign -v -p 4 "$RELEASE_APK" release-apk/Buddy-Music-aligned.apk
-            $BUILD_TOOLS_PATH/apksigner sign --ks android.keystore --ks-pass pass:password123 --key-pass pass:password123 --out release-apk/Buddy-Music-release.apk release-apk/Buddy-Music-aligned.apk
-          else
-            cp "$RELEASE_APK" release-apk/Buddy-Music-release.apk
-          fi
-
-          echo "APK successfully prepared:"
+          cp "$APK_PATH" release-apk/Buddy-Music-release.apk
           ls -lh release-apk/
 
-      - name: Upload APK Artifact
+      - name: Upload APK as Workflow Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Buddy-Music-Android-APK
-          path: release-apk/*.apk
+          path: release-apk/Buddy-Music-release.apk
+          if-no-files-found: error
           retention-days: 30
 
-      - name: Create GitHub Release
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
           tag_name: v1.0.${{ github.run_number }}
-          name: Buddy Music v1.0.${{ github.run_number }} APK
+          name: Buddy Music v1.0.${{ github.run_number }} (Android APK)
           body: |
             ### 🎵 Buddy - Voice Music Assistant APK
-            Compiled Android APK package for Buddy Music.
+            Direct Android APK release built by GitHub Actions.
 
-            **How to install on Android:**
-            1. Download `Buddy-Music-release.apk` below.
-            2. Open the file on your device and tap **Install**.
-            3. Grant microphone permission for "Hey Buddy" voice assistant commands!
-          files: release-apk/*.apk
+            **Installation Instructions:**
+            1. Download **Buddy-Music-release.apk** from the Assets below.
+            2. Open the file on your Android device and tap **Install**.
+            3. Enjoy hands-free music control with "Hey Buddy"!
+          files: release-apk/Buddy-Music-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
